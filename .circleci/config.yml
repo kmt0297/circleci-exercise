@@ -1,0 +1,59 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build and push test image to Docker Hub
+          command: |
+            echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
+            docker build -t 021997/circleci-exercise:$CIRCLE_SHA1 .
+            docker push 021997/circleci-exercise:$CIRCLE_SHA1
+
+  test:
+    docker:
+      - image: 021997/circleci-exercise:<< pipeline.git.revision >>
+      - image: cimg/postgres:16.4
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+    working_directory: /app
+    steps:
+      - run:
+          name: Wait for Postgres
+          command: ./scripts/wait-for-db.sh
+      - run:
+          name: Run tests
+          command: mkdir -p test-results && pytest --junitxml=test-results/junit.xml
+      - store_test_results:
+          path: test-results
+
+  deploy:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - run:
+          name: Deploy tested image to Render
+          command: |
+            curl -fsS -X POST "${RENDER_DEPLOY_HOOK}&imgURL=docker.io%2F021997%2Fcircleci-exercise%3A${CIRCLE_SHA1}"
+
+workflows:
+  build-test-deploy:
+    jobs:
+      - build:
+          context: docker
+      - test:
+          requires: [build]
+      - deploy:
+          requires: [test]
+          context: render-deploy
+          filters:
+            branches:
+              only: main

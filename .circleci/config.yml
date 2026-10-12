@@ -37,32 +37,23 @@ jobs:
 
   deploy:
     docker:
-      - image: mcr.microsoft.com/azure-cli:latest
+      - image: cimg/base:current
     steps:
       - run:
-          name: Log in to Azure with OIDC (no stored secrets)
+          name: Deploy tested image to Render
           command: |
-            az login --service-principal \
-              --username "$AZURE_CLIENT_ID" \
-              --tenant "$AZURE_TENANT_ID" \
-              --federated-token "$CIRCLE_OIDC_TOKEN"
-      - run:
-          name: Copy tested image from Docker Hub into ACR
-          command: |
-            az acr import --name "$ACR_NAME" \
-              --source docker.io/021997/circleci-exercise:$CIRCLE_SHA1 \
-              --image circleci-exercise:$CIRCLE_SHA1
+            curl -fsS -X POST "${RENDER_DEPLOY_HOOK}&imgURL=docker.io%2F021997%2Fcircleci-exercise%3A${CIRCLE_SHA1}"
 
 workflows:
   build-test-deploy:
     jobs:
       - build:
-          context: dockerhub
+          context: docker
       - test:
           requires: [build]
       - deploy:
           requires: [test]
-          context: azure-deploy
+          context: render-deploy
           filters:
             branches:
               only: main

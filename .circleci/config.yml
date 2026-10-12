@@ -1,0 +1,66 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@5.1.1
+
+jobs:
+  build:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build and push test image
+          command: |
+            echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
+            docker build -t $DOCKERHUB_USER/cci-demo:$CIRCLE_SHA1 .
+            docker push $DOCKERHUB_USER/cci-demo:$CIRCLE_SHA1
+
+  test:
+    docker:
+      - image: YOURUSER/cci-demo:<< pipeline.git.revision >>   # custom image from build job
+      - image: cimg/postgres:16.4                               # sidecar DB
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+    working_directory: /app
+    steps:
+      - run: ./scripts/wait-for-db.sh
+      - run: mkdir -p test-results && pytest --junitxml=test-results/junit.xml
+      - store_test_results:
+          path: test-results
+
+  deploy:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - setup_remote_docker
+      - aws-cli/setup:
+          role_arn: $AWS_ROLE_ARN        # OIDC, no static keys
+      - run:
+          name: Publish tested image to ECR
+          command: |
+            aws ecr get-login-password | docker login --username AWS --password-stdin $ECR_REGISTRY
+            docker pull YOURUSER/cci-demo:$CIRCLE_SHA1
+            docker tag YOURUSER/cci-demo:$CIRCLE_SHA1 $ECR_REGISTRY/cci-demo:$CIRCLE_SHA1
+            docker tag YOURUSER/cci-demo:$CIRCLE_SHA1 $ECR_REGISTRY/cci-demo:latest
+            docker push $ECR_REGISTRY/cci-demo:$CIRCLE_SHA1
+            docker push $ECR_REGISTRY/cci-demo:latest
+
+workflows:
+  build-test-deploy:
+    jobs:
+      - build:
+          context: dockerhub
+      - test:
+          requires: [build]
+      - deploy:
+          requires: [test]           # only runs if tests pass
+          context: aws-deploy
+          filters:
+            branches:
+              only: main             # only on merge to default branch

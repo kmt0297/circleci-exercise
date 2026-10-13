@@ -1,9 +1,3 @@
-#!/bin/bash
-# Run from the circleci-exercise folder: bash update_site.sh
-set -e
-[ -d .circleci ] || { echo "Run this from the circleci-exercise folder"; exit 1; }
- 
-cat > index.html <<'INDEX_HTML'
 <!doctype html>
 <html lang="en">
 <head>
@@ -57,7 +51,7 @@ cat > index.html <<'INDEX_HTML'
   <span class="tag"><span class="dot"></span>Deployed by CircleCI</span>
   <h1>A tested Docker image, shipped automatically</h1>
   <p class="lead">This page is running from a Docker image that CircleCI built, tested against a real Postgres database, and deployed to Render after a merge to <code>main</code>.</p>
- 
+
   <h2>How it got here</h2>
   <div class="flow">
     <div class="step">
@@ -78,7 +72,7 @@ cat > index.html <<'INDEX_HTML'
       <span>Only on <code>main</code>, and only if tests pass. Render runs the exact image that was tested.</span>
     </div>
   </div>
- 
+
   <h2>What it's made of</h2>
   <div class="grid">
     <div class="card"><b>App</b><span>Python, saving and counting users in Postgres</span></div>
@@ -88,26 +82,10 @@ cat > index.html <<'INDEX_HTML'
     <div class="card"><b>Image registry</b><span>Docker Hub, tagged by commit</span></div>
     <div class="card"><b>Hosting</b><span>Render, running the pre-built image</span></div>
   </div>
- 
+
   <footer>
     Source: <a href="https://github.com/kmt0297/circleci-exercise">github.com/kmt0297/circleci-exercise</a>
   </footer>
 </main>
 </body>
 </html>
-INDEX_HTML
- 
-cat > test_app.py <<'TEST_PY'
-from app import add_user, count_users, get_conn
- 
- 
-def test_add_user_saves_the_name():
-    add_user("alice")
-    with get_conn() as c:
-        rows = c.execute("SELECT name FROM users").fetchall()
-    assert rows == [("alice",)]      # exactly one row, and it's "alice"
-    assert count_users() == 1        # exactly 1, not "1 or more"
-TEST_PY
- 
-echo "Updated index.html and test_app.py"
-git status --short
